@@ -8,7 +8,9 @@ import cors from "cors";
 const app = express();
 const server = http.createServer(app);
 
-app.use(cors());
+app.use(cors({
+  origin: "*", // Allow all for testing; restrict in production
+}));
 
 const io = new Server(server, {
   cors: {

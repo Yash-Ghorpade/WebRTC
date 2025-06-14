@@ -1,42 +1,22 @@
-// src/server.ts
-import express from "express";
-import http from "http";
-import { Server } from "socket.io";
-import cors from "cors";
-
-// Basic server setup
-const app = express();
-const server = http.createServer(app);
-
-app.use(cors({
-  origin: "*", // Allow all for testing; restrict in production
-}));
-
-const io = new Server(server, {
-  cors: {
-    origin: "*", // Change this in production
-    methods: ["GET", "POST"],
-  },
+const app = require("express")();
+const server = require("http").createServer(app);
+const cors = require("cors");
+const io = require("socket.io")(server, {
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.id}`);
+app.use(cors());
+app.get('/', (req, res) => res.send('Hello World'));
 
-  socket.on("join-room", (roomId: string) => {
-    socket.join(roomId);
-    socket.to(roomId).emit("user-joined", socket.id);
-
-    socket.on("signal", ({ to, data }) => {
-      io.to(to).emit("signal", { from: socket.id, data });
-    });
-
-    socket.on("disconnect", () => {
-      socket.to(roomId).emit("user-left", socket.id);
-    });
+io.on("connection", socket => {
+  socket.emit("me", socket.id);
+  socket.on("disconnect", () => socket.broadcast.emit("callEnded"));
+  socket.on("callUser", ({ userToCall, signalData, from, name }) => {
+    io.to(userToCall).emit("callUser", { signal: signalData, from, name });
+  });
+  socket.on("answerCall", data => {
+    io.to(data.to).emit("callAccepted", data.signal);
   });
 });
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Signaling server running on port ${PORT}`);
-});
+server.listen(8080, () => console.log("Server is running"));

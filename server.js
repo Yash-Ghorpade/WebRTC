@@ -7,7 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // Replace with your frontend domain in production
+    origin: "*", // Replace with your frontend domain for production
     methods: ["GET", "POST"]
   }
 });
@@ -19,6 +19,15 @@ io.on("connection", (socket) => {
 
   socket.on("join", (roomId) => {
     socket.join(roomId);
+
+    // Send back all other users in the room
+    const otherUsers = Array.from(io.sockets.adapter.rooms.get(roomId) || []).filter(
+      (id) => id !== socket.id
+    );
+
+    socket.emit("all-users", otherUsers);
+
+    // Notify others
     socket.to(roomId).emit("user-joined", socket.id);
   });
 

@@ -1,38 +1,45 @@
+const express = require("express");
+const http = require("http");
 const { Server } = require("socket.io");
+const cors = require("cors");
 
-const io = new Server(8080, {
-  cors: true,
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Replace with your frontend domain in production
+    methods: ["GET", "POST"]
+  }
 });
 
-const emailToSocketIdMap = new Map();
-const socketidToEmailMap = new Map();
+app.use(cors());
 
 io.on("connection", (socket) => {
-  console.log(`Socket Connected`, socket.id);
-  socket.on("room:join", (data) => {
-    const { email, room } = data;
-    emailToSocketIdMap.set(email, socket.id);
-    socketidToEmailMap.set(socket.id, email);
-    io.to(room).emit("user:joined", { email, id: socket.id });
-    socket.join(room);
-    io.to(socket.id).emit("room:join", data);
+  console.log("User connected:", socket.id);
+
+  socket.on("join", (roomId) => {
+    socket.join(roomId);
+    socket.to(roomId).emit("user-joined", socket.id);
   });
 
-  socket.on("user:call", ({ to, offer }) => {
-    io.to(to).emit("incomming:call", { from: socket.id, offer });
+  socket.on("offer", ({ target, sdp }) => {
+    io.to(target).emit("offer", { sdp, caller: socket.id });
   });
 
-  socket.on("call:accepted", ({ to, ans }) => {
-    io.to(to).emit("call:accepted", { from: socket.id, ans });
+  socket.on("answer", ({ target, sdp }) => {
+    io.to(target).emit("answer", { sdp, caller: socket.id });
   });
 
-  socket.on("peer:nego:needed", ({ to, offer }) => {
-    console.log("peer:nego:needed", offer);
-    io.to(to).emit("peer:nego:needed", { from: socket.id, offer });
+  socket.on("ice-candidate", ({ target, candidate }) => {
+    io.to(target).emit("ice-candidate", { candidate, from: socket.id });
   });
 
-  socket.on("peer:nego:done", ({ to, ans }) => {
-    console.log("peer:nego:done", ans);
-    io.to(to).emit("peer:nego:final", { from: socket.id, ans });
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
   });
+});
+
+const PORT = 8080;
+server.listen(PORT, () => {
+  console.log(`Signaling server running on port ${PORT}`);
 });

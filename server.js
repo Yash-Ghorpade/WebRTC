@@ -7,26 +7,43 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // For production, restrict this to your frontend domain
+    origin: "*", // Restrict this in production
     methods: ["GET", "POST"],
   },
 });
 
 app.use(cors());
+
 app.get("/", (req, res) => {
   res.send("WebRTC Signaling Server is running.");
 });
 
+// Email to Socket mapping
+const emailToSocketId = {};
+
 io.on("connection", (socket) => {
   console.log("🔌 New connection:", socket.id);
 
-  socket.on("join", (roomId) => {
+  socket.on("join", ({ roomId, email }) => {
+    // Disconnect old socket for this email, if exists
+    const existingSocketId = emailToSocketId[email];
+    if (existingSocketId && existingSocketId !== socket.id) {
+      const oldSocket = io.sockets.sockets.get(existingSocketId);
+      if (oldSocket) {
+        console.log(`🔁 Disconnecting previous socket for ${email}: ${existingSocketId}`);
+        oldSocket.disconnect(true);
+      }
+    }
+
+    emailToSocketId[email] = socket.id;
+
     socket.join(roomId);
+
     const usersInRoom = Array.from(io.sockets.adapter.rooms.get(roomId) || []).filter(
       (id) => id !== socket.id
     );
 
-    console.log("🧠", socket.id, "joined room", roomId, "Existing users:", usersInRoom);
+    console.log("🧠", email, "joined room", roomId, "Existing users:", usersInRoom);
 
     socket.emit("all-users", usersInRoom);
     socket.to(roomId).emit("user-joined", socket.id);
@@ -49,6 +66,15 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log("❌ Disconnected:", socket.id);
+
+    // Remove email mapping
+    for (const email in emailToSocketId) {
+      if (emailToSocketId[email] === socket.id) {
+        delete emailToSocketId[email];
+        break;
+      }
+    }
+
     socket.broadcast.emit("user-left", socket.id);
   });
 });
